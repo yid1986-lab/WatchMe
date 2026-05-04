@@ -1178,30 +1178,24 @@ fun WatchMeApp(
                     onLogout = ::performLogout,
                 )
             } else {
+                val contentScrollState = rememberScrollState()
+                LaunchedEffect(activeTab) {
+                    contentScrollState.scrollTo(0)
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(contentScrollState)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     status.value
                         ?.takeUnless { it.contains("verified", ignoreCase = true) }
+                        ?.takeUnless { it.contains("workspace unlocked", ignoreCase = true) }
                         ?.let { StatusCard(message = it) }
-                    BrandedWorkspaceBanner(
-                    )
 
                     when (activeTab) {
                         MainTab.HOME -> {
-                            val liveCount = automationHome?.optJSONObject("summary")?.optInt("creators_live") ?: 0
-                            HomeDiscordEmbedDashboardCard(
-                                liveStatusLine = liveStatusSummary,
-                                creatorsLiveCount = liveCount,
-                                creatorDisplayName = displayName,
-                                twitchUrl = twitch,
-                                youtubeUrl = youtube,
-                                kickUrl = kick,
-                            )
                             AutomationHomeSection(
                                 home = automationHome,
                                 activity = automationActivity,
@@ -1906,22 +1900,6 @@ private fun WatchMeAppPostFanTab(
         },
         onResetDraft = onResetDraft,
     )
-    SocialPreviewSection(
-        displayName = displayName,
-        selectedGuildName = selectedGuildName,
-        announceChannel = announceSummary,
-        draftPostText = draftPostText,
-        draftLinkUrl = draftLinkUrl,
-        draftTargets = draftTargets,
-        brandName = brandName,
-        brandEmbedTitle = brandEmbedTitle,
-        brandCallToAction = brandCallToAction,
-        brandRoleMention = brandRoleMention,
-        brandFooter = brandFooter,
-        brandAccentColor = brandAccentColor,
-        draftBannerUri = draftMediaItems.firstOrNull { it.kind == MediaKind.IMAGE }?.uriString.orEmpty(),
-        draftVideoUri = draftMediaItems.firstOrNull { it.kind == MediaKind.VIDEO }?.uriString.orEmpty(),
-    )
     SchedulePlannerSection(
         scheduleDate = scheduleDate,
         onScheduleDateChange = onScheduleDateChange,
@@ -2325,12 +2303,12 @@ private fun GuildConfigSection(
     onSelectedGuildNameChange: (String) -> Unit,
     onSaveGuild: () -> Unit,
 ) {
-    val showSwitcher = availableGuilds.size > 1
+    val showSwitcher = false
     val resolvedName = selectedGuildName.ifBlank {
         availableGuilds.firstOrNull { it.guildId == selectedGuildId }?.guildName.orEmpty()
     }
     SectionCard(
-        title = "Server (guild)",
+        title = "Server",
         subtitle = "",
     ) {
         when {
@@ -2424,11 +2402,6 @@ private fun DiscordChannelPicker(
             readOnly = true,
             label = { Text(label) },
             placeholder = { Text("Choose channel") },
-            supportingText = {
-                if (selectedId.isNotBlank()) {
-                    Text("Channel ID: $selectedId")
-                }
-            },
             trailingIcon = {
                 Row {
                     if (selectedId.isNotBlank()) {
@@ -2574,15 +2547,6 @@ private fun ConfigLiveStreamingSection(
             channels = channels,
             selectedId = socialsFeedChannelId,
             onSelectedIdChange = onSocialsFeedChannelIdChange,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        CurrentSelectionCard(
-            title = "Current streaming channel",
-            value = channelLabel(channels, announceChannelId),
-        )
-        CurrentSelectionCard(
-            title = "Current Social Grab channel",
-            value = channelLabel(channels, socialsFeedChannelId),
         )
     }
 }
@@ -2994,31 +2958,6 @@ private fun BrandingControlsSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Discord clip", style = MaterialTheme.typography.titleSmall)
-            FilledTonalButton(onClick = onPickDiscordClip) {
-                Text("Pick clip")
-            }
-        }
-        if (brandDiscordPreviewVideoUri.isNotBlank()) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Videocam, contentDescription = null)
-                Text(
-                    Uri.parse(brandDiscordPreviewVideoUri).lastPathSegment ?: "Selected video",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                TextButton(onClick = onClearDiscordClip) {
-                    Text("Remove")
-                }
-            }
-        }
         Text(
             text = "Mention mode",
             style = MaterialTheme.typography.labelLarge,
@@ -3081,20 +3020,6 @@ private fun BrandingControlsSection(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(
-            text = "Accent colour",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ColorPickerSection(
-            color = brandAccentColor,
-            hue = brandAccentHue,
-            onHueChange = onBrandAccentHueChange,
-            saturation = brandAccentSaturation,
-            onSaturationChange = onBrandAccentSaturationChange,
-            brightness = brandAccentBrightness,
-            onBrightnessChange = onBrandAccentBrightnessChange,
-        )
         OutlinedTextField(
             value = brandFooter,
             onValueChange = onBrandFooterChange,
@@ -3102,33 +3027,6 @@ private fun BrandingControlsSection(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        DiscordPostPreviewCard(
-            guildName = selectedGuildName,
-            announceChannel = announceChannel,
-            authorName = brandName,
-            embedTitle = brandEmbedTitle,
-            roleMention = brandRoleMention,
-            bodyText = previewText,
-            linkUrl = previewLinkUrl,
-            ctaLabel = brandCallToAction,
-            footer = brandFooter,
-            accentColor = brandAccentColor,
-            avatarImageModel = brandLogoLocalUri.ifBlank { brandLogoUrl },
-            embedPreviewImageUrl = brandPreviewLocalUri.ifBlank { previewImageUrl },
-            discordAttachmentVideoUri = brandDiscordPreviewVideoUri,
-        )
-        InfoLine("Attached assets", brandAssetCount.toString())
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            FilledTonalButton(onClick = onAddImages, modifier = Modifier.weight(1f)) {
-                Text("Add image")
-            }
-            FilledTonalButton(onClick = onAddVideos, modifier = Modifier.weight(1f)) {
-                Text("Add video")
-            }
-        }
         FilledTonalButton(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
             Text("Save branding")
         }
@@ -3247,104 +3145,66 @@ private fun AutomationHomeSection(
     onBoostLast: () -> Unit,
 ) {
     val summary = AutomationSummary.fromJson(home?.optJSONObject("summary"))
-    val health = home?.optJSONObject("health")
     SectionCard(
         title = "Stats",
         subtitle = "",
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 MetricTile("Live now", summary.creatorsLive.toString(), Modifier.weight(1f))
                 MetricTile("Posts today", summary.postsToday.toString(), Modifier.weight(1f))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 MetricTile(
                     label = "Success",
                     value = summary.successRate?.let { "$it%" } ?: "--",
                     modifier = Modifier.weight(1f),
                 )
-                MetricTile("Needs eyes", summary.needsAttention.toString(), Modifier.weight(1f))
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
                 MetricTile(
                     label = "Scheduled",
                     value = summary.scheduledCount.coerceAtLeast(0).toString(),
                     modifier = Modifier.weight(1f),
                 )
-                MetricTile(
-                    label = "Top platform",
-                    value = summary.topPlatform.ifBlank { "—" }.replaceFirstChar { it.uppercase(Locale.getDefault()) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            MetricTile(
-                label = "Push",
-                value = if (health?.optBoolean("push_configured") == true) {
-                    "${health.optInt("active_push_devices")} device${pluralSuffix(health.optInt("active_push_devices"))}"
-                } else {
-                    "—"
-                },
-                Modifier.fillMaxWidth(),
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onPostNow) { Text("Post Now") }
-            FilledTonalButton(onClick = onBoostLast) { Text("Boost Last") }
-            TextButton(onClick = onRefreshAutomation) { Text("Refresh") }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(
-                onClick = onRefreshLiveStatus,
-                enabled = token != null,
-            ) {
-                Text("Live status")
-            }
-            TextButton(
-                onClick = onSyncLive,
-                enabled = token != null,
-            ) {
-                Text("Sync")
             }
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
             contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(14.dp),
         ) {
             Text(
                 text = liveStatusSummary,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(12.dp),
             )
         }
-        MonitorSwitchRow(
-            title = "Background checks (~15 min)",
-            description = "",
-            checked = backgroundMonitor,
-            enabled = token != null && !fastMonitor,
-            onCheckedChange = onBackgroundMonitorChanged,
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        MonitorSwitchRow(
-            title = "Fast checks (~3 min)",
-            description = "",
-            checked = fastMonitor,
-            enabled = token != null && !backgroundMonitor,
-            onCheckedChange = onFastMonitorChanged,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = onRefreshAutomation, modifier = Modifier.weight(1f)) {
+                Text("Refresh")
+            }
+            TextButton(onClick = onRefreshLiveStatus, enabled = token != null, modifier = Modifier.weight(1f)) {
+                Text("Live check")
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onPostNow, modifier = Modifier.weight(1f)) {
+                Text("Post")
+            }
+            TextButton(onClick = onBoostLast, modifier = Modifier.weight(1f)) {
+                Text("Boost")
+            }
+            TextButton(onClick = onSyncLive, enabled = token != null, modifier = Modifier.weight(1f)) {
+                Text("Sync")
+            }
+        }
     }
-
     SectionCard(
         title = "Activity",
         subtitle = "",
@@ -3353,7 +3213,7 @@ private fun AutomationHomeSection(
             Text("No automation events yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                activity.take(8).forEach { item -> ActivityRow(item) }
+                activity.take(5).forEach { item -> ActivityRow(item) }
             }
         }
     }
@@ -3375,16 +3235,25 @@ private fun MetricTile(label: String, value: String, modifier: Modifier = Modifi
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+private fun compactActivityTime(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return "Recent"
+    return trimmed
+        .replace('T', ' ')
+        .removeSuffix("Z")
+        .take(16)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -3392,6 +3261,11 @@ private fun MetricTile(label: String, value: String, modifier: Modifier = Modifi
 private fun ActivityRow(item: AutomationActivityItem) {
     var detailOpen by remember(item.activityId) { mutableStateOf(false) }
     val headline = liveActivityHeadline(item)
+    val bodyText = item.body.trim().takeUnless {
+        it.equals("Creator is live on twitch.", ignoreCase = true) ||
+            it.equals("Creator just went live", ignoreCase = true) ||
+            it.equals(headline, ignoreCase = true)
+    }.orEmpty()
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f),
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -3438,33 +3312,32 @@ private fun ActivityRow(item: AutomationActivityItem) {
                     )
                 }
                 TextButton(onClick = { detailOpen = true }) { Text("Details") }
-                Text(
-                    item.severity.replaceFirstChar { it.uppercase(Locale.getDefault()) },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = when (item.severity.lowercase(Locale.getDefault())) {
-                        "error" -> Color(0xFFFF8A8A)
-                        "warning" -> Color(0xFFFFD166)
-                        else -> MaterialTheme.colorScheme.primary
-                    },
-                )
             }
             Text(
                 text = automationEventFriendlyLabel(item.eventType),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (item.body.isNotBlank()) {
+            if (bodyText.isNotBlank()) {
                 Text(
-                    item.body,
+                    bodyText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (item.platform.isNotBlank()) {
-                    FilterChip(selected = true, onClick = {}, label = { Text(platformDisplayName(item.platform)) })
+                    Text(
+                        text = platformDisplayName(item.platform),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
-                FilterChip(selected = true, onClick = {}, label = { Text(item.createdAt.ifBlank { "Recent" }) })
+                Text(
+                    text = compactActivityTime(item.createdAt),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -3844,10 +3717,11 @@ private fun SchedulePlannerSection(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Save post on this day")
         }
-        ScheduledPostsSummary(
-            selectedDate = selectedDate,
-            posts = selectedDayPosts,
-        )
+        if (selectedDayPosts.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                selectedDayPosts.forEach { post -> ScheduledPostRow(post = post) }
+            }
+        }
     }
 }
 
@@ -4726,36 +4600,46 @@ private fun GuildMemberDropdown(
     selectedDiscordUserId: String,
     onPickMember: (GuildMemberPick) -> Unit,
     onClearPick: () -> Unit,
+    title: String = "Discord member",
+    fieldLabel: String = "Creator",
+    emptyText: String = "Member list unavailable. Refresh after Discord login or check the selected server.",
 ) {
     val context = LocalContext.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Discord member",
+            text = title,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(4.dp))
         if (roster.isEmpty()) {
-            Text(
-                text = "Open this tab again after signing in — we load your server roster from Discord.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text(
+                    text = emptyText,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
             return
         }
         var expanded by remember { mutableStateOf(false) }
         val picked = roster.firstOrNull { it.discordUserId == selectedDiscordUserId }
         val summary = when {
-            selectedDiscordUserId.isBlank() -> "Tap pick to choose someone from this server"
+            selectedDiscordUserId.isBlank() -> "Choose from server members"
             picked != null -> picked.displayName.ifBlank { picked.discordUserId }
-            else -> "Manual Discord ID (${selectedDiscordUserId.take(8)}…)"
+            else -> "Saved member (${selectedDiscordUserId.take(8)})"
         }
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = summary,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Creator") },
+                label = { Text(fieldLabel) },
                 trailingIcon = {
                     Row {
                         if (selectedDiscordUserId.isNotBlank()) {
@@ -4764,11 +4648,13 @@ private fun GuildMemberDropdown(
                             }
                         }
                         TextButton(onClick = { expanded = true }) {
-                            Text("Pick")
+                            Text("Choose")
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
             )
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 roster.forEach { member ->
@@ -4807,7 +4693,6 @@ private fun GuildMemberDropdown(
         }
     }
 }
-
 @Composable
 private fun CreatorRosterSection(
     guildCreatorRoster: List<GuildMemberPick>,
@@ -4844,6 +4729,7 @@ private fun CreatorRosterSection(
     onRemoveRequest: (MemberRequestItem) -> Unit,
     onClearDraft: () -> Unit,
 ) {
+    var showManualDiscordEntry by remember { mutableStateOf(false) }
     val creatorRequests = remember(memberRequests) {
         memberRequests.filter { it.requestType.equals("creator", ignoreCase = true) }
     }
@@ -4862,17 +4748,29 @@ private fun CreatorRosterSection(
             selectedDiscordUserId = selectedRosterDiscordId,
             onPickMember = onPickGuildMember,
             onClearPick = onClearGuildMemberPick,
+            title = "Creator member",
+            fieldLabel = "Choose creator",
         )
-        OutlinedTextField(
-            value = manualDiscordUserId,
-            onValueChange = {
-                onManualDiscordUserIdChange(it.trim())
-            },
-            label = { Text("Or paste Discord user ID") },
-            placeholder = { Text("Snowflake if not in the list") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (guildCreatorRoster.isEmpty()) {
+            TextButton(
+                onClick = { showManualDiscordEntry = !showManualDiscordEntry },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (showManualDiscordEntry) "Hide advanced ID entry" else "Advanced: add creator outside member list")
+            }
+        }
+        if (showManualDiscordEntry) {
+            OutlinedTextField(
+                value = manualDiscordUserId,
+                onValueChange = {
+                    onManualDiscordUserIdChange(it.trim())
+                },
+                label = { Text("Discord user ID") },
+                placeholder = { Text("Only use if the creator is not in the server") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         OutlinedTextField(
             value = memberName,
             onValueChange = onMemberNameChange,
@@ -4922,13 +4820,14 @@ private fun CreatorRosterSection(
             )
         }
         if (showMemberPing) {
-            OutlinedTextField(
-                value = pingMemberId,
-                onValueChange = onPingMemberIdChange,
-                label = { Text("Ping Discord member ID (optional)") },
-                placeholder = { Text("User snowflake override") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            GuildMemberDropdown(
+                roster = guildCreatorRoster,
+                selectedDiscordUserId = pingMemberId,
+                onPickMember = { pick -> onPingMemberIdChange(pick.discordUserId) },
+                onClearPick = { onPingMemberIdChange("") },
+                title = "Ping member",
+                fieldLabel = "Choose ping target",
+                emptyText = "Member list unavailable. The creator mention will still work when a creator is selected.",
             )
         }
         OutlinedTextField(
@@ -5356,12 +5255,12 @@ private fun SectionCard(
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, Color(0x1E7C9CFF)),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -5370,7 +5269,7 @@ private fun SectionCard(
                 VerifiedProBadge(compact = true, contentDescription = "WatchMe mark")
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -5396,12 +5295,12 @@ private fun StepSectionCard(
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, Color(0x2E7C9CFF)),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -5415,15 +5314,15 @@ private fun StepSectionCard(
                 ) {
                     Text(
                         text = "STEP $step",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Black,
                         maxLines = 1,
                     )
                 }
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
