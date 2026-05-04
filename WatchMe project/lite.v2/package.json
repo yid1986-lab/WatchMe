@@ -1,0 +1,22 @@
+{
+  "name": "watchme-lite-v2",
+  "private": true,
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node src/index.js --check",
+    "preflight": "node src/index.js --preflight",
+    "rehearsal": "node src/cutover-rehearsal.js",
+    "smoke": "node src/index.js --smoke && node --test test/lite-interaction-smoke.test.js",
+    "smoke:backend": "node --test test/lite-protected-backend-smoke.test.js",
+    "stress:backend": "node src/backend-stress.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}

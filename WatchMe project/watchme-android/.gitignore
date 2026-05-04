@@ -1,0 +1,16 @@
+/.gradle/
+/.idea/
+**/build/
+local.properties
+app/google-services.json
+keystore.properties
+*.jks
+*.keystore
+*.iml
+*.png
+*.xml
+!app/src/**/*.xml
+!app/src/**/*.png
+window_dump*.xml
+watchme*_screen*.png
+app_current_screen.png

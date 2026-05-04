@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.local
+.env.production
+.local/backups/pg/*.dump
+coverage/
+dist/
+.next/
+*.log

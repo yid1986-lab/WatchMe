@@ -1,0 +1,27 @@
+{
+  "name": "watchme-web-v2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node apps/api/src/server.js",
+    "dev:web": "vite --config apps/web/vite.config.js",
+    "build": "npm run build:web",
+    "build:web": "vite build --config apps/web/vite.config.js",
+    "preview:web": "vite preview --config apps/web/vite.config.js --host 0.0.0.0 --port 4173",
+    "test": "node tests/smoke.test.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "vite": "^8.0.0"
+  }
+}
