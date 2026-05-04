@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily timer for WatchMe V2 Postgres backup
+
+[Timer]
+Unit=watchme-v2-pg-backup.service
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
