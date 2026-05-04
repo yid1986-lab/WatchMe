@@ -564,6 +564,30 @@ object WatchMeApi {
         }
     }
 
+    suspend fun getGuildRoles(sessionToken: String, guildId: String): JSONObject = withContext(Dispatchers.IO) {
+        if (isPreviewToken(sessionToken)) {
+            return@withContext JSONObject()
+                .put("ok", true)
+                .put("guild_id", guildId)
+                .put(
+                    "roles",
+                    JSONArray()
+                        .put(JSONObject().put("id", "preview-role-live").put("name", "Live Now"))
+                        .put(JSONObject().put("id", "preview-role-crew").put("name", "Creator Crew")),
+                )
+        }
+        val req = Request.Builder()
+            .url("${base()}/api/mobile/guilds/$guildId/roles")
+            .header("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        client.newCall(req).execute().use { res ->
+            val body = res.body?.string().orEmpty()
+            if (!res.isSuccessful) throw IllegalStateException("guild roles ${res.code}: $body")
+            JSONObject(body)
+        }
+    }
+
     suspend fun addGuildKeywordFilter(
         sessionToken: String,
         guildId: String,

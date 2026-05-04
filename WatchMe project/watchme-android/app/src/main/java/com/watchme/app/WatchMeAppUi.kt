@@ -171,6 +171,11 @@ private data class GuildMemberPick(
     val avatarUrl: String = "",
 )
 
+private data class GuildRolePick(
+    val id: String,
+    val name: String,
+)
+
 private data class KeywordFilterRow(
     val platform: String,
     val keyword: String,
@@ -225,6 +230,7 @@ fun WatchMeApp(
     onLoadGuildWorkspace: suspend (guildId: String) -> JSONObject,
     onLoadGuildChannels: suspend (guildId: String) -> JSONObject,
     onLoadGuildMembers: suspend (guildId: String) -> JSONObject,
+    onLoadGuildRoles: suspend (guildId: String) -> JSONObject,
     onSaveGuildConfig: suspend (guildId: String, config: JSONObject) -> JSONObject,
     onAddGuildKeywordFilter: suspend (guildId: String, platform: String, keyword: String) -> JSONObject,
     onRemoveGuildKeywordFilter: suspend (guildId: String, platform: String, keyword: String) -> JSONObject,
@@ -371,6 +377,7 @@ fun WatchMeApp(
     var editingMemberRequestId by rememberSaveable { mutableStateOf<String?>(null) }
 
     var guildDiscordMembers by remember { mutableStateOf(emptyList<GuildMemberPick>()) }
+    var guildDiscordRoles by remember { mutableStateOf(emptyList<GuildRolePick>()) }
 
     val selectedLibraryUris = (selectedImages.toList() + selectedVideos.toList()).distinct()
     val draftMediaItems = draftMediaUris.mapNotNull(libraryItemMap::get)
@@ -869,6 +876,7 @@ fun WatchMeApp(
         if (token.isNullOrBlank() || selectedGuildId.isBlank()) {
             discordChannels = emptyList()
             guildDiscordMembers = emptyList()
+            guildDiscordRoles = emptyList()
             return@LaunchedEffect
         }
 
@@ -921,6 +929,25 @@ fun WatchMeApp(
             }.sortedWith(compareBy { it.displayName.lowercase(Locale.getDefault()) })
         } catch (_: Exception) {
             guildDiscordMembers = emptyList()
+        }
+
+        try {
+            val rolePayload = onLoadGuildRoles(selectedGuildId.trim())
+            val arr = rolePayload.optJSONArray("roles")
+            guildDiscordRoles = buildList {
+                if (arr != null) {
+                    for (index in 0 until arr.length()) {
+                        val role = arr.optJSONObject(index) ?: continue
+                        val id = role.optString("id").trim()
+                        val name = role.optString("name").trim().ifBlank { id }
+                        if (id.isNotBlank() && name != "@everyone") {
+                            add(GuildRolePick(id = id, name = name))
+                        }
+                    }
+                }
+            }.sortedWith(compareBy { it.name.lowercase(Locale.getDefault()) })
+        } catch (_: Exception) {
+            guildDiscordRoles = emptyList()
         }
     }
 
@@ -1192,6 +1219,7 @@ fun WatchMeApp(
                     status.value
                         ?.takeUnless { it.contains("verified", ignoreCase = true) }
                         ?.takeUnless { it.contains("workspace unlocked", ignoreCase = true) }
+                        ?.takeUnless { it.contains("coroutine scope left the composition", ignoreCase = true) }
                         ?.let { StatusCard(message = it) }
 
                     when (activeTab) {
@@ -1510,6 +1538,7 @@ fun WatchMeApp(
                         MainTab.MEMBER_REQUESTS -> {
                             CreatorRosterSection(
                                 guildCreatorRoster = guildDiscordMembers,
+                                guildRoleRoster = guildDiscordRoles,
                                 selectedRosterDiscordId = rosterPickedDiscordUserId,
                                 onPickGuildMember = { pick ->
                                     rosterPickedDiscordUserId = pick.discordUserId
@@ -4627,75 +4656,248 @@ private fun GuildMemberDropdown(
             }
             return
         }
-        var expanded by remember { mutableStateOf(false) }
+        var pickerOpen by remember { mutableStateOf(false) }
+        var query by remember { mutableStateOf("") }
         val picked = roster.firstOrNull { it.discordUserId == selectedDiscordUserId }
         val summary = when {
             selectedDiscordUserId.isBlank() -> "Choose from server members"
             picked != null -> picked.displayName.ifBlank { picked.discordUserId }
-            else -> "Saved member (${selectedDiscordUserId.take(8)})"
+            else -> "Saved member"
         }
-        Box(modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = summary,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(fieldLabel) },
-                trailingIcon = {
-                    Row {
-                        if (selectedDiscordUserId.isNotBlank()) {
-                            TextButton(onClick = onClearPick) {
-                                Text("Clear")
-                            }
+        OutlinedTextField(
+            value = summary,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(fieldLabel) },
+            trailingIcon = {
+                Row {
+                    if (selectedDiscordUserId.isNotBlank()) {
+                        TextButton(onClick = onClearPick) {
+                            Text("Clear")
                         }
-                        TextButton(onClick = { expanded = true }) {
-                            Text("Choose")
+                    }
+                    TextButton(onClick = { pickerOpen = true }) {
+                        Text("Choose")
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { pickerOpen = true },
+        )
+        if (pickerOpen) {
+            AlertDialog(
+                onDismissRequest = {
+                    pickerOpen = false
+                    query = ""
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pickerOpen = false
+                            query = ""
+                        },
+                    ) {
+                        Text("Close")
+                    }
+                },
+                title = { Text(fieldLabel) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = { Text("Search members") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val filtered = roster.filter { member ->
+                            val name = member.displayName.ifBlank { member.discordUserId }
+                            query.isBlank() ||
+                                name.contains(query, ignoreCase = true) ||
+                                member.discordUserId.contains(query, ignoreCase = true)
+                        }
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp),
+                        ) {
+                            items(filtered, key = { it.discordUserId }) { member ->
+                                val label = member.displayName.ifBlank { member.discordUserId }
+                                    .ifBlank { "Unknown member" }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onPickMember(member)
+                                            pickerOpen = false
+                                            query = ""
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    val avatar = member.avatarUrl.trim()
+                                    if (avatar.startsWith("http", ignoreCase = true)) {
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(context).data(avatar).crossfade(true).build(),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    } else {
+                                        Surface(
+                                            modifier = Modifier.size(36.dp),
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = label.take(1).uppercase(Locale.getDefault()),
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                HorizontalDivider()
+                            }
                         }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = true },
             )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                roster.forEach { member ->
-                    val label = member.displayName.ifBlank { member.discordUserId }
-                        .ifBlank { "Unknown member" }
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                label,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            val avatar = member.avatarUrl.trim()
-                            if (avatar.startsWith("http", ignoreCase = true)) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(context).data(avatar).crossfade(true).build(),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape),
-                                    contentScale = ContentScale.Crop,
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.size(32.dp))
-                            }
-                        },
-                        onClick = {
-                            onPickMember(member)
-                            expanded = false
-                        },
-                    )
-                }
-            }
         }
     }
 }
+
+@Composable
+private fun GuildRoleDropdown(
+    roster: List<GuildRolePick>,
+    selectedRoleId: String,
+    onPickRole: (GuildRolePick) -> Unit,
+    onClearPick: () -> Unit,
+    fieldLabel: String = "Role",
+    emptyText: String = "Role list unavailable. Refresh after Discord login or check the selected server.",
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (roster.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = emptyText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            return@Column
+        }
+        var pickerOpen by remember { mutableStateOf(false) }
+        var query by remember { mutableStateOf("") }
+        val picked = roster.firstOrNull { it.id == selectedRoleId }
+        val summary = when {
+            selectedRoleId.isBlank() -> "Choose from server roles"
+            picked != null -> picked.name
+            else -> "Saved role"
+        }
+        OutlinedTextField(
+            value = summary,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(fieldLabel) },
+            trailingIcon = {
+                Row {
+                    if (selectedRoleId.isNotBlank()) {
+                        TextButton(onClick = onClearPick) {
+                            Text("Clear")
+                        }
+                    }
+                    TextButton(onClick = { pickerOpen = true }) {
+                        Text("Choose")
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { pickerOpen = true },
+        )
+        if (pickerOpen) {
+            AlertDialog(
+                onDismissRequest = {
+                    pickerOpen = false
+                    query = ""
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pickerOpen = false
+                            query = ""
+                        },
+                    ) {
+                        Text("Close")
+                    }
+                },
+                title = { Text(fieldLabel) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = { Text("Search roles") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val filtered = roster.filter { role ->
+                            query.isBlank() || role.name.contains(query, ignoreCase = true)
+                        }
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp),
+                        ) {
+                            items(filtered, key = { it.id }) { role ->
+                                Text(
+                                    text = role.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onPickRole(role)
+                                            pickerOpen = false
+                                            query = ""
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun CreatorRosterSection(
     guildCreatorRoster: List<GuildMemberPick>,
+    guildRoleRoster: List<GuildRolePick>,
     selectedRosterDiscordId: String,
     onPickGuildMember: (GuildMemberPick) -> Unit,
     onClearGuildMemberPick: () -> Unit,
@@ -4729,7 +4931,6 @@ private fun CreatorRosterSection(
     onRemoveRequest: (MemberRequestItem) -> Unit,
     onClearDraft: () -> Unit,
 ) {
-    var showManualDiscordEntry by remember { mutableStateOf(false) }
     val creatorRequests = remember(memberRequests) {
         memberRequests.filter { it.requestType.equals("creator", ignoreCase = true) }
     }
@@ -4751,26 +4952,6 @@ private fun CreatorRosterSection(
             title = "Creator member",
             fieldLabel = "Choose creator",
         )
-        if (guildCreatorRoster.isEmpty()) {
-            TextButton(
-                onClick = { showManualDiscordEntry = !showManualDiscordEntry },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (showManualDiscordEntry) "Hide advanced ID entry" else "Advanced: add creator outside member list")
-            }
-        }
-        if (showManualDiscordEntry) {
-            OutlinedTextField(
-                value = manualDiscordUserId,
-                onValueChange = {
-                    onManualDiscordUserIdChange(it.trim())
-                },
-                label = { Text("Discord user ID") },
-                placeholder = { Text("Only use if the creator is not in the server") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
         OutlinedTextField(
             value = memberName,
             onValueChange = onMemberNameChange,
@@ -4810,13 +4991,12 @@ private fun CreatorRosterSection(
         val showRolePing = pingTargetMode == "role" || pingTargetMode == "both"
         val showMemberPing = pingTargetMode == "member" || pingTargetMode == "both"
         if (showRolePing) {
-            OutlinedTextField(
-                value = pingRoleId,
-                onValueChange = onPingRoleIdChange,
-                label = { Text("Ping Discord role ID (optional)") },
-                placeholder = { Text("<@&1234567890> snowflake optional") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            GuildRoleDropdown(
+                roster = guildRoleRoster,
+                selectedRoleId = pingRoleId,
+                onPickRole = { role -> onPingRoleIdChange(role.id) },
+                onClearPick = { onPingRoleIdChange("") },
+                fieldLabel = "Ping role",
             )
         }
         if (showMemberPing) {

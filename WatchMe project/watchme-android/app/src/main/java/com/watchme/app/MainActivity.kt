@@ -175,6 +175,10 @@ class MainActivity : ComponentActivity() {
                         val currentToken = token ?: throw IllegalStateException("Not logged in")
                         WatchMeApi.getGuildMembers(currentToken, guildId)
                     },
+                    onLoadGuildRoles = { guildId ->
+                        val currentToken = token ?: throw IllegalStateException("Not logged in")
+                        WatchMeApi.getGuildRoles(currentToken, guildId)
+                    },
                     onSaveGuildConfig = { guildId, config ->
                         val currentToken = token ?: throw IllegalStateException("Not logged in")
                         WatchMeApi.saveGuildConfig(currentToken, guildId, config)
