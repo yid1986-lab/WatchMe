@@ -79,6 +79,29 @@ function platformName(platform) {
   return platform === "x" ? "X" : `${platform || ""}`.charAt(0).toUpperCase() + `${platform || ""}`.slice(1);
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function formatDateTime(value) {
+  if (!value) return "Unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function getConnectionAvatar(connection) {
+  return firstText(
+    connection?.external_account_avatar_url,
+    connection?.external_avatar_url,
+    connection?.metadata_json?.avatar_url,
+    connection?.metadata_json?.profile_image_url
+  );
+}
+
 function SocialConnectionsPanel({ connections, onConnect, onDisconnect, onSelectPage }) {
   return (
     <section className="panel">
@@ -91,17 +114,26 @@ function SocialConnectionsPanel({ connections, onConnect, onDisconnect, onSelect
           const pageOptions = Array.isArray(connection?.metadata_json?.page_options)
             ? connection.metadata_json.page_options
             : [];
+          const accountName = firstText(
+            connection?.external_account_name,
+            connection?.metadata_json?.display_name,
+            connection?.external_account_id
+          );
+          const avatarUrl = getConnectionAvatar(connection);
+          const statusText = pending ? "Needs page selection" : connection ? "Connected" : "Not connected";
           return (
             <article className="social-row" key={platform}>
-              <div>
-                <strong>{platformName(platform)}</strong>
-                <p>
-                  {pending
-                    ? "Choose a Page to finish"
-                    : connection
-                      ? connection.external_account_name || connection.external_account_id || "Connected"
-                      : "Not connected"}
-                </p>
+              <div className="social-identity">
+                {avatarUrl ? <img src={avatarUrl} alt="" className="social-avatar" /> : null}
+                <div>
+                  <strong>{platformName(platform)}</strong>
+                  <p>{accountName || statusText}</p>
+                </div>
+              </div>
+              <div className="social-meta">
+                <span className={`status-badge ${connection ? (pending ? "status-pending" : "status-ok") : "status-idle"}`}>
+                  {statusText}
+                </span>
               </div>
               <div className="social-actions">
                 {connection ? (
@@ -269,25 +301,52 @@ function toDraftFromWorkspace(guildId, workspaceConfig = {}) {
   };
 }
 
+function activityIdentity(item) {
+  return firstText(
+    item?.creator_name,
+    item?.creator_display_name,
+    item?.display_name,
+    item?.metadata_json?.creator_name,
+    item?.payload_json?.creator_name
+  );
+}
+
+function creatorAvatar(creator) {
+  return firstText(
+    creator?.avatar_url,
+    creator?.profile_image_url,
+    creator?.discord_avatar_url,
+    creator?.metadata_json?.avatar_url
+  );
+}
+
+function creatorStatus(creator) {
+  return firstText(creator?.access_status, creator?.status, "pending");
+}
+
+function supportsVideoUpload() {
+  return false;
+}
+
 function AutomationControlTower({ home, activity, scheduled }) {
   const summary = home?.summary || {};
   const health = home?.health || {};
   return (
     <section className="panel">
-      <p className="panel-label">Pro Control Tower</p>
-      <h2>Automation status</h2>
+      <p className="panel-label">Pro control tower</p>
+      <h2>Stats overview</h2>
       <div className="stat-grid">
         <div className="stat-tile">
           <strong>{summary.creators_live ?? 0}</strong>
-          <span>Creators live</span>
+          <span>Creators live now</span>
         </div>
         <div className="stat-tile">
           <strong>{summary.posts_today ?? 0}</strong>
-          <span>Posts today</span>
+          <span>Posts in last 24h</span>
         </div>
         <div className="stat-tile">
           <strong>{summary.success_rate == null ? "--" : `${summary.success_rate}%`}</strong>
-          <span>Success rate</span>
+          <span>Delivery success</span>
         </div>
         <div className="stat-tile">
           <strong>{summary.needs_attention ?? 0}</strong>
@@ -309,7 +368,7 @@ function AutomationControlTower({ home, activity, scheduled }) {
               {scheduled.slice(0, 5).map((post) => (
                 <div key={post.dispatch_id}>
                   <strong>{post.payload_json?.template_name || `Dispatch ${post.dispatch_id}`}</strong>
-                  <div>{post.scheduled_at || "No date"} | {(post.target_platforms_json || []).join(", ")}</div>
+                  <div>{formatDateTime(post.scheduled_at)} | {(post.target_platforms_json || []).join(", ")}</div>
                 </div>
               ))}
             </div>
@@ -321,13 +380,19 @@ function AutomationControlTower({ home, activity, scheduled }) {
       <div className="stack">
         <p className="panel-label">Activity feed</p>
         {(activity || []).length ? (
-          activity.slice(0, 10).map((item) => (
-            <div className="activity-row" key={item.activity_id}>
-              <strong>{item.title}</strong>
-              <span>{item.body || item.event_type}</span>
-              <small>{item.platform || "watchme"} | {item.created_at || ""}</small>
-            </div>
-          ))
+          activity.slice(0, 10).map((item) => {
+            const actor = activityIdentity(item);
+            return (
+              <div className="activity-row" key={item.activity_id}>
+                <strong>{item.title}</strong>
+                <span>{item.body || item.event_type}</span>
+                <small>
+                  {actor ? `${actor} | ` : ""}
+                  {item.platform || "watchme"} | {formatDateTime(item.created_at)}
+                </small>
+              </div>
+            );
+          })
         ) : (
           <p>No automation activity yet.</p>
         )}
@@ -441,6 +506,13 @@ export function App() {
   const [automationScheduled, setAutomationScheduled] = useState([]);
   const [socialConnections, setSocialConnections] = useState([]);
   const [socialRefreshTick, setSocialRefreshTick] = useState(0);
+  const connectedGuilds = guilds.filter((guild) =>
+    guild?.billing_connected === true
+    || guild?.is_billing_connected === true
+    || guild?.assigned === true
+    || guild?.entitlement_active === true
+  );
+  const singleAssignedGuild = connectedGuilds.length === 1 ? connectedGuilds[0] : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -560,6 +632,11 @@ export function App() {
       cancelled = true;
     };
   }, [session?.loggedIn, me?.entitlement?.active, socialRefreshTick]);
+
+  useEffect(() => {
+    if (!singleAssignedGuild?.guild_id) return;
+    setSelectedGuildId((current) => current || singleAssignedGuild.guild_id);
+  }, [singleAssignedGuild?.guild_id]);
 
   async function refreshSocialConnections() {
     const socialPayload = await requestJson("/api/social/connections");
@@ -686,7 +763,7 @@ export function App() {
     <main className="page-shell">
       <section className="hero-card">
         <p className="eyebrow">WatchMe Pro</p>
-        <h1>Automation control tower</h1>
+        <h1>Stats and control tower</h1>
         <p className="lede">
           Manage live alerts, scheduled posts, creator routing, social distribution, and automation
           health from the same Pro workspace used by the mobile app.
@@ -768,21 +845,32 @@ export function App() {
           </div>
         ) : (
           <div className="stack">
-            <label className="field-stack">
-              <span>Manageable guild</span>
-              <select
-                value={selectedGuildId}
-                onChange={(event) => setSelectedGuildId(event.target.value)}
-                className="input-shell"
-              >
-                <option value="">Select a guild</option>
-                {guilds.map((guild) => (
-                  <option key={guild.guild_id} value={guild.guild_id}>
-                    {guild.name || guild.guild_id}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {singleAssignedGuild ? (
+              <label className="field-stack">
+                <span>Assigned server</span>
+                <input
+                  className="input-shell"
+                  value={singleAssignedGuild.name || singleAssignedGuild.guild_id}
+                  readOnly
+                />
+              </label>
+            ) : (
+              <label className="field-stack">
+                <span>Manageable server</span>
+                <select
+                  value={selectedGuildId}
+                  onChange={(event) => setSelectedGuildId(event.target.value)}
+                  className="input-shell"
+                >
+                  <option value="">Select a server</option>
+                  {guilds.map((guild) => (
+                    <option key={guild.guild_id} value={guild.guild_id}>
+                      {guild.name || guild.guild_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <div className="grid">
               <article className="panel">
@@ -793,9 +881,9 @@ export function App() {
                 <div className="stack">
                   {(creatorPerformance.top_creators || []).length ? (
                     creatorPerformance.top_creators.map((creator) => (
-                      <div key={creator.discord_user_id}>
-                        <strong>{creator.creator_name}</strong>
-                        <div>
+                      <div key={creator.discord_user_id} className="creator-card">
+                        <strong>{creator.creator_name || creator.display_name || creator.discord_user_id}</strong>
+                        <div className="muted-line">
                           {creator.alert_count} alerts | peak viewers {creator.peak_viewers || 0} |{" "}
                           {(creator.platforms || []).join(", ") || "No platforms yet"}
                         </div>
@@ -813,10 +901,17 @@ export function App() {
                 <div className="stack">
                   {savedCreators.length ? (
                     savedCreators.map((creator) => (
-                      <div key={`${creator.guild_id}-${creator.discord_user_id}`}>
-                        <strong>{creator.display_name || creator.discord_user_id}</strong>
-                        <div>
-                          {creator.access_status || "pending"} |{" "}
+                      <div key={`${creator.guild_id}-${creator.discord_user_id}`} className="creator-card">
+                        <div className="creator-header">
+                          {creatorAvatar(creator) ? (
+                            <img src={creatorAvatar(creator)} alt="" className="creator-avatar" />
+                          ) : null}
+                          <div>
+                            <strong>{creator.display_name || creator.creator_name || creator.discord_user_id}</strong>
+                            <div className="muted-line">{creatorStatus(creator)}</div>
+                          </div>
+                        </div>
+                        <div className="muted-line">
                           {[creator.twitch_url && "Twitch", creator.youtube_url && "YouTube", creator.kick_url && "Kick"]
                             .filter(Boolean)
                             .join(", ") || "No platforms yet"}
@@ -833,6 +928,7 @@ export function App() {
             <article className="panel">
               <p className="panel-label">Live automation config</p>
               <div className="form-grid">
+                <p className="hint-text">Brand images use temporary URL input until upload support is added.</p>
                 <div className="grid compact-grid">
                   <input
                     value={configDraft.brand_name}
@@ -857,7 +953,7 @@ export function App() {
                     onChange={(event) =>
                       setConfigDraft((current) => ({ ...current, brand_logo_url: event.target.value }))
                     }
-                    placeholder="Brand logo URL"
+                    placeholder="Temporary logo image URL"
                     className="input-shell"
                   />
                   <input
@@ -865,9 +961,27 @@ export function App() {
                     onChange={(event) =>
                       setConfigDraft((current) => ({ ...current, preview_image_url: event.target.value }))
                     }
-                    placeholder="Fallback preview image URL"
+                    placeholder="Temporary fallback preview image URL"
                     className="input-shell"
                   />
+                </div>
+                <div className="grid compact-grid">
+                  <div className="image-preview-shell">
+                    <p className="panel-label">Logo preview</p>
+                    {configDraft.brand_logo_url ? (
+                      <img src={configDraft.brand_logo_url} alt="Brand logo preview" className="branding-preview-image" />
+                    ) : (
+                      <p className="muted-line">No logo URL set.</p>
+                    )}
+                  </div>
+                  <div className="image-preview-shell">
+                    <p className="panel-label">Fallback preview image</p>
+                    {configDraft.preview_image_url ? (
+                      <img src={configDraft.preview_image_url} alt="Fallback preview" className="branding-preview-image" />
+                    ) : (
+                      <p className="muted-line">No fallback image URL set.</p>
+                    )}
+                  </div>
                 </div>
                 <div className="grid compact-grid">
                   <input
@@ -1125,6 +1239,38 @@ export function App() {
                     />
                   ))}
                 </div>
+                <textarea
+                  value={(templateDraft.media_urls_json || []).join("\n")}
+                  onChange={(event) =>
+                    setTemplateDraft((current) => ({
+                      ...current,
+                      media_urls_json: String(event.target.value || "")
+                        .split("\n")
+                        .map((value) => value.trim())
+                        .filter(Boolean),
+                    }))
+                  }
+                  placeholder="Media URLs (one per line)"
+                  rows={3}
+                  className="textarea-shell"
+                />
+                <label className="toggle-row">
+                  <input type="checkbox" checked={supportsVideoUpload()} readOnly disabled />
+                  <span>Video controls are unavailable in web V2 right now.</span>
+                </label>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(templateDraft.is_default)}
+                    onChange={(event) =>
+                      setTemplateDraft((current) => ({
+                        ...current,
+                        is_default: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Override Post (set as default template)</span>
+                </label>
                 <button className="primary-link" onClick={saveTemplate} disabled={busy}>
                   Save template
                 </button>

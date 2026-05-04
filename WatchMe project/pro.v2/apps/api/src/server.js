@@ -351,10 +351,38 @@ function normalizeDiscordGuildChannels(payload) {
     .sort((a, b) => a.position - b.position);
 }
 
+function normalizeDiscordGuildRoles(payload) {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((role) => ({
+      id: cleanText(role?.id),
+      name: cleanText(role?.name) || "role",
+      color: Number.isFinite(Number(role?.color)) ? Number(role.color) : 0,
+      position: Number.isFinite(Number(role?.position)) ? Number(role.position) : 0,
+      mentionable: Boolean(role?.mentionable),
+      hoist: Boolean(role?.hoist),
+      managed: Boolean(role?.managed),
+    }))
+    .filter((role) => role.id)
+    .sort((a, b) => b.position - a.position);
+}
+
 async function loadGuildDiscordChannels(guildId) {
   const safeId = encodeURIComponent(guildId);
   const raw = await fetchDiscordBotJson(`/guilds/${safeId}/channels`);
   return normalizeDiscordGuildChannels(raw);
+}
+
+async function loadGuildDiscordRoles(guildId) {
+  const safeId = encodeURIComponent(String(guildId || "").trim());
+  if (!safeId) {
+    return [];
+  }
+  const raw = await fetchDiscordBotJson(`/guilds/${safeId}/roles`);
+  return normalizeDiscordGuildRoles(raw);
 }
 
 async function loadGuildDiscordMembers(guildId) {
@@ -409,6 +437,39 @@ async function loadGuildDiscordMembers(guildId) {
   );
 }
 
+async function handleInternalGuildMembers(req, res, guildId) {
+  if (req.method !== "GET") {
+    return sendMethodNotAllowed(res);
+  }
+
+  if (!isInternalAuthorized(req)) {
+    return sendJson(res, 401, { error: "Unauthorized" });
+  }
+
+  const discordUserId = getInternalDiscordUserId(req);
+  if (!discordUserId) {
+    return sendBadRequest(res, "Missing x-discord-user-id");
+  }
+
+  const canManage = await assertUserCanManageGuild(discordUserId, guildId);
+  if (!canManage) {
+    return sendJson(res, 403, { error: "Guild access denied" });
+  }
+
+  try {
+    const members = await loadGuildDiscordMembers(guildId);
+    return sendJson(res, 200, {
+      ok: true,
+      guild_id: guildId,
+      members,
+    });
+  } catch (error) {
+    return sendJson(res, 503, {
+      error: error?.message || "Unable to load Discord members",
+    });
+  }
+}
+
 async function handleMobileGuildMembers(req, res, guildId) {
   if (req.method !== "GET") {
     return sendMethodNotAllowed(res);
@@ -435,12 +496,71 @@ async function handleMobileGuildMembers(req, res, guildId) {
   }
 }
 
+async function handleMobileGuildRoles(req, res, guildId) {
+  if (req.method !== "GET") {
+    return sendMethodNotAllowed(res);
+  }
+
+  const authorized = await getAuthorizedMobileGuild(req, guildId);
+  if (!authorized.ok) {
+    return sendJson(res, authorized.code === "guild_forbidden" ? 403 : 401, {
+      error: authorized.code === "guild_forbidden" ? "Guild access denied" : "Unauthorized",
+    });
+  }
+
+  try {
+    const roles = await loadGuildDiscordRoles(guildId);
+    return sendJson(res, 200, {
+      ok: true,
+      guild_id: guildId,
+      roles,
+    });
+  } catch (error) {
+    return sendJson(res, 503, {
+      error: error?.message || "Unable to load Discord roles",
+    });
+  }
+}
+
 async function assertUserCanManageGuild(discordUserId, guildId) {
   const manageable = await getMemberGuilds(discordUserId, {
     skipBillingGuildFilter: true,
     entitlementOptions: getInternalWorkspaceOptions(),
   });
   return manageable.some((row) => String(row.guild_id) === String(guildId));
+}
+
+async function handleInternalGuildRoles(req, res, guildId) {
+  if (req.method !== "GET") {
+    return sendMethodNotAllowed(res);
+  }
+
+  if (!isInternalAuthorized(req)) {
+    return sendJson(res, 401, { error: "Unauthorized" });
+  }
+
+  const discordUserId = getInternalDiscordUserId(req);
+  if (!discordUserId) {
+    return sendBadRequest(res, "Missing x-discord-user-id");
+  }
+
+  const canManage = await assertUserCanManageGuild(discordUserId, guildId);
+  if (!canManage) {
+    return sendJson(res, 403, { error: "Guild access denied" });
+  }
+
+  try {
+    const roles = await loadGuildDiscordRoles(guildId);
+    return sendJson(res, 200, {
+      ok: true,
+      guild_id: guildId,
+      roles,
+    });
+  } catch (error) {
+    return sendJson(res, 503, {
+      error: error?.message || "Unable to load Discord roles",
+    });
+  }
 }
 
 async function handleMobileGuildChannels(req, res, guildId) {
@@ -731,6 +851,46 @@ function normalizeStringArray(value) {
   return value
     .map((item) => cleanText(item))
     .filter(Boolean);
+}
+
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function getMediaKindFromUrl(url) {
+  const path = String(url || "").toLowerCase().split("?")[0];
+  if (/\.(mp4|mov|webm|m4v|mkv|avi)$/.test(path)) {
+    return "video";
+  }
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|tif|tiff|heic|heif)$/.test(path)) {
+    return "image";
+  }
+  return "unknown";
+}
+
+function normalizeMediaUrls(value, { max = 8 } = {}) {
+  const urls = normalizeStringArray(value)
+    .filter((item) => isHttpUrl(item))
+    .slice(0, Math.max(1, Number(max || 8)));
+  return Array.from(new Set(urls));
+}
+
+function summarizeMediaUrls(mediaUrls = []) {
+  let imageCount = 0;
+  let videoCount = 0;
+  let unknownCount = 0;
+  for (const url of mediaUrls) {
+    const kind = getMediaKindFromUrl(url);
+    if (kind === "image") imageCount += 1;
+    else if (kind === "video") videoCount += 1;
+    else unknownCount += 1;
+  }
+  return {
+    total: mediaUrls.length,
+    image_count: imageCount,
+    video_count: videoCount,
+    unknown_count: unknownCount,
+  };
 }
 
 function normalizeScheduledAt(value) {
@@ -1487,7 +1647,7 @@ function getCreatorPostTemplatePatch(body = {}) {
     name: cleanText(body.name) || "Quick post",
     post_text: cleanText(body.post_text) || "",
     link_url: cleanText(body.link_url),
-    media_urls_json: normalizeStringArray(body.media_urls_json),
+    media_urls_json: normalizeMediaUrls(body.media_urls_json),
     target_platforms_json: requestedPlatforms,
     is_default: toBoolean(body.is_default, false),
   };
@@ -1530,8 +1690,13 @@ async function handleCreatorPostTemplate(req, res, discordUserId) {
     return sendJson(res, 401, { error: "Unauthorized" });
   }
 
-  const body = await readJsonBody(req);
-  const patch = getCreatorPostTemplatePatch(body);
+  let patch;
+  try {
+    const body = await readJsonBody(req);
+    patch = getCreatorPostTemplatePatch(body);
+  } catch (error) {
+    return sendBadRequest(res, error.message || "Invalid template payload");
+  }
   const saved = await saveCreatorPostTemplate(discordUserId, patch);
 
   return sendJson(res, 200, {
@@ -1600,16 +1765,20 @@ async function handleCreatorPostPublish(req, res, discordUserId) {
     return sendBadRequest(res, error.message || "Invalid scheduled_at");
   }
 
+  const mediaUrls = normalizeMediaUrls(body.media_urls_json);
   const payload = {
     post_text: cleanText(body.post_text) || "",
     link_url: cleanText(body.link_url),
-    media_urls_json: normalizeStringArray(body.media_urls_json),
+    media_urls_json: mediaUrls,
     target_platforms_json: targetPlatforms,
     scheduled_at: scheduledAt,
     template_name: cleanText(body.template_name),
-    metadata_json: typeof body.metadata_json === "object" && body.metadata_json !== null
-      ? body.metadata_json
-      : {},
+    metadata_json: {
+      ...(typeof body.metadata_json === "object" && body.metadata_json !== null
+        ? body.metadata_json
+        : {}),
+      media_summary: summarizeMediaUrls(mediaUrls),
+    },
   };
 
   const dispatch = await createCreatorPostDispatch(discordUserId, {
@@ -2750,6 +2919,49 @@ async function handleCreators(req, res, guildId) {
   });
 }
 
+async function handleMobileGuildCreatorDetail(req, res, guildId, discordUserId) {
+  if (req.method !== "GET") {
+    return sendMethodNotAllowed(res);
+  }
+
+  const authorized = await getAuthorizedMobileGuild(req, guildId);
+  if (!authorized.ok) {
+    return sendJson(res, authorized.code === "guild_forbidden" ? 403 : 401, {
+      error: authorized.code === "guild_forbidden" ? "Guild access denied" : "Unauthorized",
+    });
+  }
+
+  const creators = await getCreatorProfiles(guildId);
+  const creator = creators.find((item) => String(item.discord_user_id) === String(discordUserId));
+  if (!creator) {
+    return sendNotFound(res, "Creator not found");
+  }
+
+  const [members, roles, channels] = await Promise.all([
+    loadGuildDiscordMembers(guildId).catch(() => []),
+    loadGuildDiscordRoles(guildId).catch(() => []),
+    loadGuildDiscordChannels(guildId).catch(() => []),
+  ]);
+
+  const member = members.find((item) => String(item.discord_user_id) === String(discordUserId)) || null;
+
+  return sendJson(res, 200, {
+    ok: true,
+    guild_id: guildId,
+    creator: {
+      ...creator,
+      avatar_url: member?.avatar_url || "",
+      discord_display_name: member?.display_name || null,
+      discord_nickname: member?.nickname || "",
+    },
+    discord: {
+      member,
+      roles,
+      channels,
+    },
+  });
+}
+
 async function handleLiteCapacity(req, res, guildId) {
   if (req.method !== "GET") {
     return sendMethodNotAllowed(res);
@@ -3033,6 +3245,16 @@ function createServer() {
         return handleInternalGuildChannels(req, res, decodeURIComponent(match[1]));
       }
 
+      match = path.match(/^\/api\/internal\/guilds\/([^/]+)\/members$/);
+      if (match) {
+        return handleInternalGuildMembers(req, res, decodeURIComponent(match[1]));
+      }
+
+      match = path.match(/^\/api\/internal\/guilds\/([^/]+)\/roles$/);
+      if (match) {
+        return handleInternalGuildRoles(req, res, decodeURIComponent(match[1]));
+      }
+
       match = path.match(/^\/api\/internal\/guilds\/([^/]+)\/keyword-filters$/);
       if (match) {
         return handleInternalGuildKeywordFilters(req, res, decodeURIComponent(match[1]));
@@ -3148,6 +3370,16 @@ function createServer() {
       match = path.match(/^\/api\/mobile\/guilds\/([^/]+)\/members$/);
       if (match) {
         return handleMobileGuildMembers(req, res, decodeURIComponent(match[1]));
+      }
+
+      match = path.match(/^\/api\/mobile\/guilds\/([^/]+)\/roles$/);
+      if (match) {
+        return handleMobileGuildRoles(req, res, decodeURIComponent(match[1]));
+      }
+
+      match = path.match(/^\/api\/mobile\/guilds\/([^/]+)\/creators\/([^/]+)$/);
+      if (match) {
+        return handleMobileGuildCreatorDetail(req, res, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
       }
 
       match = path.match(/^\/api\/mobile\/guilds\/([^/]+)\/keyword-filters$/);

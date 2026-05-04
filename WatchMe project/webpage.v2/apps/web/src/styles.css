@@ -32,7 +32,7 @@ body {
 .hero-card,
 .panel {
   border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 24px;
+  border-radius: 8px;
   background: rgba(9, 14, 25, 0.84);
   box-shadow: 0 24px 70px rgba(2, 6, 23, 0.34);
   padding: 24px;
@@ -74,7 +74,7 @@ body {
   justify-content: center;
   min-height: 46px;
   padding: 0 18px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.88), rgba(29, 78, 216, 0.82));
   color: #f8fafc;
   text-decoration: none;
@@ -91,7 +91,7 @@ body {
 .secondary-button {
   min-height: 42px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(15, 23, 42, 0.72);
   color: #e5edf8;
@@ -107,11 +107,11 @@ body {
 
 .social-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: center;
   padding: 16px;
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.62);
 }
@@ -119,11 +119,60 @@ body {
 .social-row p {
   margin: 4px 0 0;
   color: #cbd5e1;
+  word-break: break-word;
 }
 
 .social-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.social-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.social-meta {
+  display: flex;
+  justify-content: center;
+}
+
+.social-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-ok {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.42);
+  color: #bbf7d0;
+}
+
+.status-pending {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.45);
+  color: #fef08a;
+}
+
+.status-idle {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #cbd5e1;
 }
 
 .page-picker {
@@ -155,7 +204,7 @@ body {
 
 .stat-tile {
   padding: 16px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(15, 23, 42, 0.74);
   border: 1px solid rgba(148, 163, 184, 0.16);
 }
@@ -179,7 +228,7 @@ body {
   display: grid;
   gap: 4px;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: 8px;
   background: rgba(15, 23, 42, 0.68);
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
@@ -209,7 +258,7 @@ body {
 .textarea-shell {
   width: 100%;
   min-height: 44px;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 0 12px;
   background: #020617;
   color: #f8fafc;
@@ -236,7 +285,7 @@ body {
 pre {
   margin: 0;
   padding: 16px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: rgba(2, 6, 23, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.14);
   overflow-x: auto;
@@ -298,7 +347,7 @@ code {
   justify-content: center;
   min-height: 44px;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid rgba(226, 232, 240, 0.22);
   color: #e5edf8;
   text-decoration: none;
@@ -369,7 +418,7 @@ code {
 
 .preview-stat-row div {
   min-height: 104px;
-  border-radius: 18px;
+  border-radius: 8px;
   padding: 14px;
 }
 
@@ -393,7 +442,7 @@ code {
 .preview-feed div {
   display: grid;
   gap: 4px;
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 14px;
 }
 
@@ -408,8 +457,57 @@ code {
 
 .feature-strip article {
   min-height: 188px;
-  border-radius: 22px;
+  border-radius: 8px;
   padding: 22px;
+}
+
+.creator-card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 12px;
+}
+
+.creator-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.creator-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.muted-line {
+  color: #cbd5e1;
+  word-break: break-word;
+}
+
+.image-preview-shell {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 12px;
+}
+
+.branding-preview-image {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(2, 6, 23, 0.8);
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  max-width: 100%;
 }
 
 .feature-strip span {
@@ -428,6 +526,25 @@ code {
 }
 
 @media (max-width: 860px) {
+  .page-shell {
+    padding: 20px 12px 40px;
+    gap: 14px;
+  }
+
+  .social-row {
+    grid-template-columns: 1fr;
+  }
+
+  .social-meta,
+  .social-actions {
+    justify-content: flex-start;
+  }
+
+  .primary-link,
+  .secondary-button {
+    width: 100%;
+  }
+
   .marketing-hero {
     min-height: auto;
     gap: 32px;

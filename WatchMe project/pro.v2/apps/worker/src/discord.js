@@ -206,6 +206,11 @@ function buildSocialFeedMessagePayload(payload = {}) {
     embed.url = postUrl;
   }
 
+  embed.author = {
+    name: creatorName.slice(0, 256),
+    ...(authorIcon ? { icon_url: authorIcon } : {}),
+  };
+
   const fields = [];
   if (event.external_account_name || event.external_account_id) {
     fields.push({
@@ -245,13 +250,6 @@ function buildSocialFeedMessagePayload(payload = {}) {
 
   if (previewImage) {
     embed.image = { url: previewImage };
-  }
-
-  if (payload.brandName) {
-    embed.author = {
-      name: String(payload.brandName).slice(0, 256),
-      ...(authorIcon ? { icon_url: authorIcon } : {}),
-    };
   }
 
   if (footerText) {

@@ -1299,15 +1299,24 @@ async function handleProcessLiveEvent(job) {
   });
 
   for (const discordUserId of Array.from(new Set(socialFanoutCreatorIds.filter(Boolean)))) {
+    const creatorName =
+      String(
+        dispatchPayload.creator_display_name ||
+        dispatchPayload.broadcaster_user_name ||
+        dispatchPayload.channel_title ||
+        dispatchPayload.name ||
+        "Creator"
+      ).trim() || "Creator";
     await recordAutomationActivityAndQueuePush(discordUserId, {
       event_type: "live.detected",
       title: "Creator just went live",
-      body: `${dispatchPayload.creatorDisplayName || "Creator"} is live on ${event.platform}.`,
+      body: `${creatorName} is live on ${event.platform}.`,
       severity: "info",
       platform: event.platform,
       source_type: "live",
       source_key: `${event.platform}:${targetSourceKey || "unknown"}:${sessionKey}`,
       metadata_json: {
+        creator_display_name: creatorName,
         session_key: sessionKey,
         source_key: targetSourceKey,
         title: dispatchPayload.title,

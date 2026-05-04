@@ -48,7 +48,6 @@ import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Videocam
@@ -64,7 +63,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -1099,9 +1097,9 @@ fun WatchMeApp(
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFF7C9CFF),
-                                selectedTextColor = Color(0xFF7C9CFF),
-                                indicatorColor = Color(0x407C9CFF),
+                                selectedIconColor = Color(0xFFAFC1FF),
+                                selectedTextColor = Color(0xFFAFC1FF),
+                                indicatorColor = Color(0x667C9CFF),
                                 unselectedIconColor = Color(0xFF6B7A90),
                                 unselectedTextColor = Color(0xFF6B7A90),
                             ),
@@ -2352,13 +2350,12 @@ private fun GuildConfigSection(
             }
 
             resolvedName.isNotBlank() -> {
-                Text(
-                    text = resolvedName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp),
+                OutlinedTextField(
+                    value = resolvedName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Assigned billing server") },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
@@ -2427,6 +2424,11 @@ private fun DiscordChannelPicker(
             readOnly = true,
             label = { Text(label) },
             placeholder = { Text("Choose channel") },
+            supportingText = {
+                if (selectedId.isNotBlank()) {
+                    Text("Channel ID: $selectedId")
+                }
+            },
             trailingIcon = {
                 Row {
                     if (selectedId.isNotBlank()) {
@@ -2971,6 +2973,13 @@ private fun BrandingControlsSection(
             onPick = onPickBrandLogo,
             onClearLocal = onClearBrandLogo,
         )
+        if (brandLogoUrl.isNotBlank() && brandLogoLocalUri.isBlank()) {
+            Text(
+                text = "Temporary remote URL in use for logo (picker upload preferred).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         BrandingAssetRow(
             title = "Banner / embed art",
             localUri = brandPreviewLocalUri,
@@ -2978,6 +2987,13 @@ private fun BrandingControlsSection(
             onPick = onPickBanner,
             onClearLocal = onClearBrandBanner,
         )
+        if (previewImageUrl.isNotBlank() && brandPreviewLocalUri.isBlank()) {
+            Text(
+                text = "Temporary remote URL in use for banner (picker upload preferred).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -3175,17 +3191,17 @@ private fun liveActivityHeadline(item: AutomationActivityItem): String {
             .orEmpty()
     }
     if (hint.isNotBlank() && !hint.equals("creator", ignoreCase = true)) {
-        return "$hint just went live"
+        return "[$hint] just went live"
     }
 
     Regex("""^(.+?)\s+is\s+live\b""", RegexOption.IGNORE_CASE).find(item.body.trim())?.groupValues
         ?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() && !it.equals("creator", ignoreCase = true) }?.let { name ->
-            return "$name just went live"
+            return "[$name] just went live"
         }
 
     Regex("""^(.+?)\s+went\s+live""", RegexOption.IGNORE_CASE).find(item.body.trim())?.groupValues
         ?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() && !it.equals("creator", ignoreCase = true) }?.let { name ->
-            return "$name just went live"
+            return "[$name] just went live"
         }
 
     if (item.body.isNotBlank()) {
@@ -3198,7 +3214,7 @@ private fun liveActivityHeadline(item: AutomationActivityItem): String {
         }
     }
 
-    return if (hint.isNotBlank()) "$hint just went live" else item.title
+    return if (hint.isNotBlank()) "[$hint] just went live" else item.title
 }
 
 private fun automationEventFriendlyLabel(eventType: String): String {
@@ -3387,7 +3403,7 @@ private fun ActivityRow(item: AutomationActivityItem) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val liveSuffix = " just went live"
@@ -3421,9 +3437,7 @@ private fun ActivityRow(item: AutomationActivityItem) {
                         modifier = Modifier.weight(1f),
                     )
                 }
-                IconButton(onClick = { detailOpen = true }) {
-                    Icon(Icons.Rounded.Info, contentDescription = "Activity info")
-                }
+                TextButton(onClick = { detailOpen = true }) { Text("Details") }
                 Text(
                     item.severity.replaceFirstChar { it.uppercase(Locale.getDefault()) },
                     style = MaterialTheme.typography.labelSmall,
@@ -3450,7 +3464,7 @@ private fun ActivityRow(item: AutomationActivityItem) {
                 if (item.platform.isNotBlank()) {
                     FilterChip(selected = true, onClick = {}, label = { Text(platformDisplayName(item.platform)) })
                 }
-                FilterChip(selected = true, onClick = {}, label = { Text(automationEventFriendlyLabel(item.eventType)) })
+                FilterChip(selected = true, onClick = {}, label = { Text(item.createdAt.ifBlank { "Recent" }) })
             }
         }
     }
@@ -3613,7 +3627,7 @@ private fun CreatorComposerSection(
         }
         if (targetsDiscord) {
             Text(
-                text = "Discord posts from mobile use links or attached images — not raw video uploads.",
+                text = "Video uploads are currently unsupported for Discord targets in mobile. Use images or a link.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -4294,6 +4308,13 @@ private fun SocialConnectionRow(
                     }
                 }
             }
+            if (connected && status.isNotBlank() && !status.equals("active", ignoreCase = true)) {
+                Text(
+                    text = "Status: ${status.replace('_', ' ')}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -4856,7 +4877,7 @@ private fun CreatorRosterSection(
             value = memberName,
             onValueChange = onMemberNameChange,
             label = { Text("Display name shown in WatchMe") },
-            placeholder = { Text("Match your Discord nickname or branding") },
+            placeholder = { Text("Member name from server roster") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -4864,7 +4885,7 @@ private fun CreatorRosterSection(
             value = displayNickname,
             onValueChange = onDisplayNicknameChange,
             label = { Text("Public / alert nickname") },
-            placeholder = { Text("Optional shorter name when they are offline from chat") },
+            placeholder = { Text("Optional: name shown in live alerts") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -4960,6 +4981,7 @@ private fun CreatorRosterSection(
         ) {
             Text("Clear")
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
         RosterGroupSection(
             title = "Linked members",
             requests = linkedMembers,

@@ -1256,7 +1256,7 @@ async function getCleanupTargets(platform, sourceExternalId) {
         ls.guild_id,
         ls.platform,
         ls.session_key,
-        ph.discord_message_id,
+        COALESCE(ph.discord_message_id, cla.discord_message_id) AS discord_message_id,
         COALESCE(gc.live_channel_id, gc.announce_channel_id) AS channel_id,
         gc.auto_cleanup,
         gc.stream_end_message_enabled,
@@ -1266,6 +1266,10 @@ async function getCleanupTargets(platform, sourceExternalId) {
         ON ph.guild_id = ls.guild_id
        AND ph.platform = ls.platform
        AND ph.session_key = ls.session_key
+      LEFT JOIN creator_live_alerts cla
+        ON cla.guild_id = ls.guild_id
+       AND cla.platform = ls.platform
+       AND cla.session_key = ls.session_key
       LEFT JOIN guild_config gc
         ON gc.guild_id = ls.guild_id
       WHERE ls.platform = $1
