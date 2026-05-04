@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -378,6 +379,8 @@ fun WatchMeApp(
 
     var guildDiscordMembers by remember { mutableStateOf(emptyList<GuildMemberPick>()) }
     var guildDiscordRoles by remember { mutableStateOf(emptyList<GuildRolePick>()) }
+    var guildDiscordMembersError by remember { mutableStateOf<String?>(null) }
+    var guildDiscordRolesError by remember { mutableStateOf<String?>(null) }
 
     val selectedLibraryUris = (selectedImages.toList() + selectedVideos.toList()).distinct()
     val draftMediaItems = draftMediaUris.mapNotNull(libraryItemMap::get)
@@ -419,6 +422,17 @@ fun WatchMeApp(
         val sorted = sortCreatorDispatches(next).take(20)
         dispatchHistory = sorted
         store.creatorDispatchHistory = sorted
+    }
+
+    fun friendlyGuildRosterError(error: Exception, label: String): String {
+        val message = error.message.orEmpty()
+        return when {
+            "401" in message -> "Sign in again so WatchMe can load $label from Discord."
+            "403" in message -> "Your Discord login cannot manage this server, so $label cannot be loaded."
+            "404" in message -> "The Pro V2 roster endpoint is still updating. Reopen this tab in a moment."
+            "503" in message -> "Discord did not return $label. Check bot access, then refresh this tab."
+            else -> "Could not load $label. Refresh after Discord login or check the selected server."
+        }
     }
 
     fun persistMemberRequests(next: List<MemberRequestItem>) {
@@ -872,11 +886,23 @@ fun WatchMeApp(
         }
     }
 
-    LaunchedEffect(token, selectedGuildId) {
+    val shouldRefreshGuildRoster = activeTab in setOf(
+        MainTab.SOCIAL_GRAB,
+        MainTab.POST_FAN,
+        MainTab.MEMBER_REQUESTS,
+        MainTab.BRANDING,
+    )
+
+    LaunchedEffect(token, selectedGuildId, shouldRefreshGuildRoster, activeTab) {
+        if (!shouldRefreshGuildRoster) {
+            return@LaunchedEffect
+        }
         if (token.isNullOrBlank() || selectedGuildId.isBlank()) {
             discordChannels = emptyList()
             guildDiscordMembers = emptyList()
             guildDiscordRoles = emptyList()
+            guildDiscordMembersError = null
+            guildDiscordRolesError = null
             return@LaunchedEffect
         }
 
@@ -927,8 +953,10 @@ fun WatchMeApp(
                     }
                 }
             }.sortedWith(compareBy { it.displayName.lowercase(Locale.getDefault()) })
-        } catch (_: Exception) {
+            guildDiscordMembersError = null
+        } catch (error: Exception) {
             guildDiscordMembers = emptyList()
+            guildDiscordMembersError = friendlyGuildRosterError(error, "server members")
         }
 
         try {
@@ -946,8 +974,10 @@ fun WatchMeApp(
                     }
                 }
             }.sortedWith(compareBy { it.name.lowercase(Locale.getDefault()) })
-        } catch (_: Exception) {
+            guildDiscordRolesError = null
+        } catch (error: Exception) {
             guildDiscordRoles = emptyList()
+            guildDiscordRolesError = friendlyGuildRosterError(error, "server roles")
         }
     }
 
@@ -1205,7 +1235,7 @@ fun WatchMeApp(
                     onLogout = ::performLogout,
                 )
             } else {
-                val contentScrollState = rememberScrollState()
+                val contentScrollState = remember(activeTab) { ScrollState(0) }
                 LaunchedEffect(activeTab) {
                     contentScrollState.scrollTo(0)
                 }
@@ -1539,6 +1569,8 @@ fun WatchMeApp(
                             CreatorRosterSection(
                                 guildCreatorRoster = guildDiscordMembers,
                                 guildRoleRoster = guildDiscordRoles,
+                                guildCreatorRosterError = guildDiscordMembersError,
+                                guildRoleRosterError = guildDiscordRolesError,
                                 selectedRosterDiscordId = rosterPickedDiscordUserId,
                                 onPickGuildMember = { pick ->
                                     rosterPickedDiscordUserId = pick.discordUserId
@@ -4898,6 +4930,8 @@ private fun GuildRoleDropdown(
 private fun CreatorRosterSection(
     guildCreatorRoster: List<GuildMemberPick>,
     guildRoleRoster: List<GuildRolePick>,
+    guildCreatorRosterError: String?,
+    guildRoleRosterError: String?,
     selectedRosterDiscordId: String,
     onPickGuildMember: (GuildMemberPick) -> Unit,
     onClearGuildMemberPick: () -> Unit,
@@ -4951,6 +4985,7 @@ private fun CreatorRosterSection(
             onClearPick = onClearGuildMemberPick,
             title = "Creator member",
             fieldLabel = "Choose creator",
+            emptyText = guildCreatorRosterError ?: "No server members returned yet. Reopen this tab after Discord login.",
         )
         OutlinedTextField(
             value = memberName,
@@ -4997,6 +5032,7 @@ private fun CreatorRosterSection(
                 onPickRole = { role -> onPingRoleIdChange(role.id) },
                 onClearPick = { onPingRoleIdChange("") },
                 fieldLabel = "Ping role",
+                emptyText = guildRoleRosterError ?: "No server roles returned yet. Reopen this tab after Discord login.",
             )
         }
         if (showMemberPing) {
@@ -5007,7 +5043,7 @@ private fun CreatorRosterSection(
                 onClearPick = { onPingMemberIdChange("") },
                 title = "Ping member",
                 fieldLabel = "Choose ping target",
-                emptyText = "Member list unavailable. The creator mention will still work when a creator is selected.",
+                emptyText = guildCreatorRosterError ?: "No server members returned yet. The creator mention still works when a creator is selected.",
             )
         }
         OutlinedTextField(
